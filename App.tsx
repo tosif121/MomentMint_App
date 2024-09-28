@@ -1,10 +1,10 @@
 import React from 'react';
 import {NavigationContainer} from '@react-navigation/native';
 import {createStackNavigator} from '@react-navigation/stack';
-import PhoneNumberInputScreen from './src/screen/PhoneNumberInputScreen';
-import OTPVerificationScreen from './src/screen/OTPVerificationScreen';
+import MobileVerification from './src/screen/MobileVerification';
 import {RootStackParamList} from './src/utils/types';
 import SplashScreen from './src/screen/SplashScreen';
+import Toast from 'react-native-toast-message';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -17,14 +17,11 @@ const App: React.FC = () => {
         <Stack.Screen name="Splash" component={SplashScreen} />
 
         <Stack.Screen
-          name="PhoneNumberInput"
-          component={PhoneNumberInputScreen}
-        />
-        <Stack.Screen
-          name="OTPVerification"
-          component={OTPVerificationScreen}
+          name="MobileVerification"
+          component={MobileVerification}
         />
       </Stack.Navigator>
+      <Toast />
     </NavigationContainer>
   );
 };

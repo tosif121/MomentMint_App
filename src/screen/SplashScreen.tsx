@@ -13,7 +13,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({navigation}) => {
     });
 
     const timer = setTimeout(() => {
-      navigation.replace('PhoneNumberInput');
+      navigation.replace('MobileVerification');
     }, 3000);
 
     fadeIn.start();

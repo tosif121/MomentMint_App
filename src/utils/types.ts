@@ -3,8 +3,7 @@ import {RouteProp} from '@react-navigation/native';
 
 export type RootStackParamList = {
   Splash: undefined;
-  PhoneNumberInput: undefined;
-  OTPVerification: {phoneNumber: string};
+  MobileVerification: undefined;
 };
 
 export type SplashScreenNavigationProp = NativeStackNavigationProp<
@@ -12,29 +11,15 @@ export type SplashScreenNavigationProp = NativeStackNavigationProp<
   'Splash'
 >;
 
-export type PhoneNumberInputScreenNavigationProp = NativeStackNavigationProp<
+export type MobileVerificationScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
-  'PhoneNumberInput'
+  'MobileVerification'
 >;
 
-export type OTPVerificationScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'OTPVerification'
->;
-
-export type OTPVerificationScreenRouteProp = RouteProp<
-  RootStackParamList,
-  'OTPVerification'
->;
-
-export type PhoneNumberInputScreenProps = {
-  navigation: PhoneNumberInputScreenNavigationProp;
+export type MobileVerificationScreenProps = {
+  navigation: MobileVerificationScreenNavigationProp;
 };
 
-export type OTPVerificationScreenProps = {
-  navigation: OTPVerificationScreenNavigationProp;
-  route: OTPVerificationScreenRouteProp;
-};
 export type SplashScreenProps = {
   navigation: SplashScreenNavigationProp;
 };
