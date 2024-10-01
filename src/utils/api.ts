@@ -1,4 +1,4 @@
-import axios, { AxiosResponse } from 'axios';
+import axios, {AxiosResponse} from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface ApiResponse<T> {
@@ -8,7 +8,7 @@ interface ApiResponse<T> {
 }
 
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://192.168.1.3:7012/api',
+  baseURL: 'http://15.207.26.134:7012/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -16,29 +16,30 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use(
-  async (config) => {
-    // Example: Adding an Authorization header
+  async config => {
     const token = await AsyncStorage.getItem('token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
+  error => {
     return Promise.reject(error);
   },
 );
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse<ApiResponse<any>>) => {
-    return response.data;
+    return {
+      ...response,
+      data: response.data,
+    };
   },
-  (error) => {
+  error => {
     if (error.response) {
       switch (error.response.status) {
         case 401:
           console.error('Unauthorized! Please log in again.');
-          // Handle logout or redirection here
           break;
         case 404:
           console.error('Resource not found.');
@@ -59,10 +60,10 @@ const get = async <T>(url: string): Promise<ApiResponse<T>> => {
   return response.data;
 };
 
-const post = async <T>(url: string, data: T): Promise<ApiResponse<T>> => {
+const post = async <T>(url: string, data: any): Promise<ApiResponse<T>> => {
   const response = await apiClient.post<ApiResponse<T>>(url, data);
   return response.data;
 };
 
-export { get, post };
+export {get, post};
 export default apiClient;

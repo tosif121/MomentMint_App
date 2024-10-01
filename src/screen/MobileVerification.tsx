@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Keyboard,
   Pressable,
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox';
@@ -16,7 +17,6 @@ import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import apiClient from '../utils/api';
 import {ApiResponse} from '../utils/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 
 interface Country {
   name: string;
@@ -24,12 +24,15 @@ interface Country {
   code: string;
 }
 
+const RESEND_TIMER_SECONDS = 60;
+
 const MobileVerification: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [formattedPhoneNumber, setFormattedPhoneNumber] = useState<string>('');
   const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
   const [isOtpSent, setIsOtpSent] = useState<boolean>(false);
-  const [remainingTime, setRemainingTime] = useState<number>(30);
+  const [remainingTime, setRemainingTime] =
+    useState<number>(RESEND_TIMER_SECONDS);
   const [countries, setCountries] = useState<Country[]>([]);
   const [filteredCountries, setFilteredCountries] = useState<Country[]>([]);
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
@@ -41,30 +44,34 @@ const MobileVerification: React.FC = () => {
   const [isEditingNumber, setIsEditingNumber] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const otpInputsRef = useRef<(TextInput | null)[]>([]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchCountries();
   }, []);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
     if (isOtpSent && remainingTime > 0) {
-      timer = setInterval(() => {
+      timerRef.current = setInterval(() => {
         setRemainingTime(prev => prev - 1);
       }, 1000);
+    } else {
+      clearInterval(timerRef.current as NodeJS.Timeout);
     }
-    return () => clearInterval(timer);
+
+    return () => clearInterval(timerRef.current as NodeJS.Timeout);
   }, [isOtpSent, remainingTime]);
 
   const fetchCountries = async () => {
     try {
       const response = await fetch('https://restcountries.com/v3.1/all');
-      const data = await response.json();
-      const formattedCountries = data.map((country: any) => ({
+      const data: any[] = await response.json();
+      const formattedCountries: Country[] = data.map((country: any) => ({
         name: country.name.common,
         dialCode: country.idd.root + (country.idd.suffixes?.[0] || ''),
         code: country.cca2,
       }));
+
       setCountries(formattedCountries);
       setFilteredCountries(formattedCountries);
 
@@ -74,62 +81,6 @@ const MobileVerification: React.FC = () => {
       console.error('Error fetching countries:', error);
     } finally {
       setLoadingCountries(false);
-    }
-  };
-
-  const handleGetOtp = async () => {
-    try {
-      const response = await axios.post(
-        'http://localhost:7012/api/checkMobileNumber',
-        {
-          mobileNumber: '+917850006956',
-        },
-      );
-      console.log(response.data);
-    } catch (err) {
-      console.log('Error Details:', err);
-        } finally {
-      // setLoading(false);
-    }
-  };
-
-  const handleGetOt = async (): Promise<void> => {
-    const phoneRegex = /^\d{10}$/;
-    if (!phoneRegex.test(phoneNumber)) {
-      showToast('error', 'Please enter a valid 10-digit phone number.');
-      return;
-    }
-
-    if (!termsAccepted) {
-      showToast('error', 'Please accept the Terms of Use & Privacy Policy.');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-
-      // Prepare the payload
-      const payload = {mobileNumber: selectedCountry.dialCode + phoneNumber};
-      console.log('Payload:', payload); // Log the payload
-
-      const response: ApiResponse<any> = await apiClient.post(
-        '/checkMobileNumber',
-        payload,
-      );
-
-      console.log('Response:', response); // Log the response
-
-      if (response.status) {
-        showToast('success', response.message);
-        setIsOtpSent(true);
-        setRemainingTime(30);
-      } else {
-        showToast('error', response.message);
-      }
-    } catch (error: any) {
-      console.log('Error:', error); // Log any error that occurs
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -145,24 +96,58 @@ const MobileVerification: React.FC = () => {
     try {
       setIsLoading(true);
       const response: ApiResponse<any> = await apiClient.post('/verifyOtp', {
-        mobileNumber: selectedCountry?.dialCode + phoneNumber, // Use the selected country code
-        otp: otpValue, // Use the entered OTP
+        mobileNumber: selectedCountry?.dialCode + phoneNumber,
+        otp: otpValue,
       });
 
       if (response.status) {
         showToast('success', response.message);
-        AsyncStorage.setItem('token', response.token);
-
+        if (response.token) {
+          await AsyncStorage.setItem('token', response.token);
+        } else {
+          console.error('Token is undefined');
+        }
+      } else {
         showToast('error', response.message);
+        setOtp(Array(6).fill(''));
+        otpInputsRef.current[0]?.focus();
       }
     } catch (error: any) {
       showToast(
         'error',
         'An error occurred while verifying OTP. Please try again.',
-      ); // User-friendly message
-      console.error('Error verifying OTP:', error); // Keep logging for debugging
+      );
+      setOtp(Array(6).fill(''));
+      otpInputsRef.current[0]?.focus();
     } finally {
       setIsLoading(false);
+    }
+  };
+  const handleCloseCountryModal = (): void => {
+    setIsCountryModalVisible(false);
+    setSearchQuery('');
+    setFilteredCountries(countries);
+  };
+
+  const handleSearch = (query: string): void => {
+    setSearchQuery(query);
+
+    if (query === '') {
+      setFilteredCountries(countries);
+    } else {
+      const filtered = countries.filter(country =>
+        country.name.toLowerCase().includes(query.toLowerCase()),
+      );
+      setFilteredCountries(filtered);
+    }
+  };
+
+  const handleOtpKeyPress = (index: number, key: string): void => {
+    if (key === 'Backspace' && !otp[index] && index > 0) {
+      const updatedOtp = [...otp];
+      updatedOtp[index - 1] = '';
+      setOtp(updatedOtp);
+      otpInputsRef.current[index - 1]?.focus();
     }
   };
 
@@ -170,25 +155,21 @@ const MobileVerification: React.FC = () => {
     const updatedOtp = [...otp];
     updatedOtp[index] = value;
     setOtp(updatedOtp);
-    if (value && index < 5) {
-      otpInputsRef.current[index + 1]?.focus();
+
+    if (value) {
+      if (index < 5) {
+        otpInputsRef.current[index + 1]?.focus();
+      } else {
+        Keyboard.dismiss();
+      }
     }
   };
 
-  const handleResendOtp = (): void => {
-    setOtp(Array(6).fill(''));
-    setIsOtpSent(true);
-    setRemainingTime(30);
-    // Implement resend OTP logic here
-  };
-
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-    const filtered = countries.filter(country =>
-      country.name.toLowerCase().includes(query.toLowerCase()),
-    );
-    setFilteredCountries(filtered);
-  };
+  useEffect(() => {
+    if (otp.every(digit => digit !== '')) {
+      handleVerifyOtp();
+    }
+  }, [otp]);
 
   const handlePhoneNumberChange = (number: string) => {
     const cleaned = number.replace(/\D/g, '').slice(0, 10);
@@ -200,25 +181,107 @@ const MobileVerification: React.FC = () => {
 
   const handleEditNumber = () => {
     setIsEditingNumber(true);
+    setIsOtpSent(false);
+    setOtp(Array(6).fill(''));
   };
 
   const handleSaveNumber = () => {
     setIsEditingNumber(false);
     setIsOtpSent(false);
     setOtp(Array(6).fill(''));
+    handleGetOtp();
   };
 
-  const handleCloseCountryModal = () => {
-    setIsCountryModalVisible(false);
-    setSearchQuery('');
-    setFilteredCountries(countries);
+  const handleGetOtp = async (): Promise<void> => {
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      showToast('error', 'Please enter a valid 10-digit phone number.');
+      return;
+    }
+
+    if (!termsAccepted) {
+      showToast('error', 'Please accept the Terms of Use & Privacy Policy.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const payload = {mobileNumber: selectedCountry?.dialCode + phoneNumber};
+      const response: ApiResponse<any> = await apiClient.post(
+        '/checkMobileNumber',
+        payload,
+      );
+
+      if (response.status) {
+        showToast('success', response.message);
+        setIsOtpSent(true);
+        startResendTimer();
+      } else {
+        showToast('error', response.message);
+      }
+    } catch (error: any) {
+      showToast('error', 'An error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  const handleResendOtp = async (): Promise<void> => {
+    try {
+      setIsLoading(true);
+
+      const response: ApiResponse<any> = await apiClient.post(
+        '/checkMobileNumber',
+        {
+          mobileNumber: selectedCountry?.dialCode + phoneNumber,
+        },
+      );
+
+      if (response.status) {
+        showToast('success', 'OTP resent successfully');
+        setOtp(Array(6).fill(''));
+        startResendTimer();
+      } else {
+        showToast('error', response.message || 'Failed to resend OTP.');
+      }
+    } catch (error: any) {
+      showToast('error', 'Failed to resend OTP. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startResendTimer = () => {
+    setRemainingTime(RESEND_TIMER_SECONDS);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    timerRef.current = setInterval(() => {
+      setRemainingTime(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current as NodeJS.Timeout);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const formatTime = (timeInSeconds: number): string => {
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = timeInSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds
+      .toString()
+      .padStart(2, '0')}`;
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>
-          {isOtpSent ? 'Verify your mobile number' : 'Enter Your Mobile Number'}
+          {isOtpSent && !isEditingNumber
+            ? 'Verify your mobile number'
+            : 'Enter Your Mobile Number'}
         </Text>
 
         {!isOtpSent || isEditingNumber ? (
@@ -288,31 +351,39 @@ const MobileVerification: React.FC = () => {
               {otp.map((digit, index) => (
                 <TextInput
                   key={index}
+                  ref={ref => (otpInputsRef.current[index] = ref)}
                   style={styles.otpInput}
                   keyboardType="number-pad"
                   maxLength={1}
-                  ref={ref => (otpInputsRef.current[index] = ref)}
                   value={digit}
                   onChangeText={value => handleOtpChange(index, value)}
+                  onKeyPress={({nativeEvent: {key}}) =>
+                    handleOtpKeyPress(index, key)
+                  }
+                  selectTextOnFocus
                 />
               ))}
             </View>
 
             <View style={styles.resendContainer}>
-              <TouchableOpacity
-                disabled={remainingTime > 0}
-                onPress={handleResendOtp}>
-                <Text
-                  style={[
-                    styles.resendText,
-                    remainingTime > 0 && {color: '#555'},
-                  ]}>
-                  Resend OTP
+              {remainingTime > 0 ? (
+                <Text style={styles.timerText}>
+                  Resend code in {formatTime(remainingTime)}
                 </Text>
-              </TouchableOpacity>
-              <Text style={styles.timerText}>
-                {`00:${remainingTime.toString().padStart(2, '0')}`}
-              </Text>
+              ) : (
+                <TouchableOpacity
+                  onPress={handleResendOtp}
+                  disabled={isLoading}
+                  style={styles.resendButton}>
+                  <Text
+                    style={[
+                      styles.resendText,
+                      isLoading && styles.resendTextDisabled,
+                    ]}>
+                    Resend verification code
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             <TouchableOpacity style={styles.button} onPress={handleVerifyOtp}>
@@ -363,8 +434,9 @@ const MobileVerification: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#101010',
+    padding: 16,
     justifyContent: 'center',
+    backgroundColor: '#101010',
   },
   content: {
     paddingHorizontal: 16,
@@ -421,34 +493,43 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  otpContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
   otpInput: {
     backgroundColor: '#202020',
     color: '#fff',
     fontSize: 18,
     textAlign: 'center',
-    width: 40,
-    height: 40,
-    borderRadius: 4,
+    width: 45,
+    height: 45,
+    borderRadius: 8,
     marginHorizontal: 4,
+    fontWeight: '600',
   },
-  resendContainer: {
+  otpContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 16,
+  },
+
+  resendContainer: {
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  timerText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  resendButton: {
+    padding: 8,
   },
   resendText: {
     color: '#2196f3',
     fontSize: 14,
+    fontWeight: '600',
   },
-  timerText: {
-    color: '#fff',
-    fontSize: 14,
+  resendTextDisabled: {
+    color: '#555',
   },
   modal: {
     justifyContent: 'flex-end',
