@@ -1,6 +1,7 @@
 import React, {useEffect} from 'react';
 import {Text, Image, StyleSheet, Animated} from 'react-native';
 import {SplashScreenProps} from '../utils/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SplashScreen: React.FC<SplashScreenProps> = ({navigation}) => {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -12,14 +13,23 @@ const SplashScreen: React.FC<SplashScreenProps> = ({navigation}) => {
       useNativeDriver: true,
     });
 
-    const timer = setTimeout(() => {
-      navigation.replace('MobileVerification');
-    }, 3000);
-
     fadeIn.start();
 
-    // Cleanup timeout if the component unmounts
-    return () => clearTimeout(timer);
+    const checkToken = async () => {
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        navigation.replace('MainTabs');
+      } else {
+        navigation.replace('MobileVerification');
+      }
+    };
+    const timer = setTimeout(() => {
+      checkToken();
+    }, 3000);
+
+    return () => {
+      clearTimeout(timer);
+    };
   }, [fadeAnim, navigation]);
 
   return (

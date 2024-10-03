@@ -15,8 +15,10 @@ import Modal from 'react-native-modal';
 import {showToast} from '../utils/toast';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import apiClient from '../utils/api';
-import {ApiResponse} from '../utils/types';
+import {ApiResponse, RootStackParamList} from '../utils/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {useNavigation} from '@react-navigation/native';
+import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 
 interface Country {
   name: string;
@@ -25,8 +27,9 @@ interface Country {
 }
 
 const RESEND_TIMER_SECONDS = 60;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const MobileVerification: React.FC = () => {
+const MobileVerificationScreen: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState<string>('');
   const [formattedPhoneNumber, setFormattedPhoneNumber] = useState<string>('');
   const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
@@ -45,6 +48,7 @@ const MobileVerification: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const otpInputsRef = useRef<(TextInput | null)[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const navigation = useNavigation<NavigationProp>();
 
   useEffect(() => {
     fetchCountries();
@@ -99,16 +103,16 @@ const MobileVerification: React.FC = () => {
         mobileNumber: selectedCountry?.dialCode + phoneNumber,
         otp: otpValue,
       });
-
-      if (response.status) {
-        showToast('success', response.message);
-        if (response.token) {
-          await AsyncStorage.setItem('token', response.token);
+      if (response.data.status) {
+        showToast('success', response.data.message);
+        navigation.replace('MainTabs');
+        if (response.data.token) {
+          await AsyncStorage.setItem('token', response.data.token);
         } else {
           console.error('Token is undefined');
         }
       } else {
-        showToast('error', response.message);
+        showToast('error', response.data.message);
         setOtp(Array(6).fill(''));
         otpInputsRef.current[0]?.focus();
       }
@@ -198,7 +202,6 @@ const MobileVerification: React.FC = () => {
       showToast('error', 'Please enter a valid 10-digit phone number.');
       return;
     }
-
     if (!termsAccepted) {
       showToast('error', 'Please accept the Terms of Use & Privacy Policy.');
       return;
@@ -211,13 +214,12 @@ const MobileVerification: React.FC = () => {
         '/checkMobileNumber',
         payload,
       );
-
-      if (response.status) {
-        showToast('success', response.message);
+      if (response.data.status) {
+        showToast('success', response.data.message || 'send otp on whatsapp');
         setIsOtpSent(true);
         startResendTimer();
       } else {
-        showToast('error', response.message);
+        showToast('error', response.data.message);
       }
     } catch (error: any) {
       showToast('error', 'An error occurred. Please try again.');
@@ -236,12 +238,12 @@ const MobileVerification: React.FC = () => {
         },
       );
 
-      if (response.status) {
+      if (response.data.status) {
         showToast('success', 'OTP resent successfully');
         setOtp(Array(6).fill(''));
         startResendTimer();
       } else {
-        showToast('error', response.message || 'Failed to resend OTP.');
+        showToast('error', response.data.message || 'Failed to resend OTP.');
       }
     } catch (error: any) {
       showToast('error', 'Failed to resend OTP. Please try again.');
@@ -574,4 +576,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MobileVerification;
+export default MobileVerificationScreen;
